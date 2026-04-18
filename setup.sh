@@ -174,8 +174,17 @@ fi
 # Phase 2 — Directories
 # ═════════════════════════════════════════════════════════════
 log "Phase 2: Directory scaffold"
-mkdir -p "${BASE_DIR}"/{frpc,tekshot-core/data/recordings}
+mkdir -p "${BASE_DIR}"/{frpc,mediamtx,tekshot-core/data/recordings}
 ok "Directories ready"
+
+# MediaMTX custom Dockerfile — cài tzdata để Go runtime nhận biến TZ
+# Không có package này, MediaMTX sẽ lưu recordings theo UTC thay vì giờ local
+write_file "${BASE_DIR}/mediamtx/Dockerfile" <<'MTXDOCKERFILE'
+FROM bluenviron/mediamtx:latest-ffmpeg
+USER root
+RUN apk add --no-cache tzdata
+ENTRYPOINT [ "/mediamtx" ]
+MTXDOCKERFILE
 
 # ═════════════════════════════════════════════════════════════
 # Phase 3 — App Config
@@ -203,6 +212,17 @@ write_file "${BASE_DIR}/mediamtx.yml" <<'EOF'
 logLevel: info
 api: yes
 apiAddress: :9997
+
+# Cấp quyền cho container tekshot-core gọi API đẩy cấu hình ghi hình
+authMethod: internal
+authInternalUsers:
+  - user: any
+    permissions:
+      - action: api
+      - action: publish
+      - action: read
+      - action: playback
+
 webrtc: no
 rtsp: no
 rtmp: no
@@ -308,7 +328,7 @@ services:
       - "8555:8555/udp"
 
   mediamtx:
-    image: bluenviron/mediamtx:latest
+    build: ./mediamtx
     container_name: mediamtx
     restart: unless-stopped
     environment:
@@ -394,7 +414,7 @@ services:
     network_mode: host
 
   mediamtx:
-    image: bluenviron/mediamtx:latest
+    build: ./mediamtx
     container_name: mediamtx
     restart: unless-stopped
     network_mode: host
