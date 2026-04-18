@@ -30,9 +30,9 @@ readonly UPDATE_TOKEN="tekshot-ai-2026"
 readonly WATCHTOWER_TOKEN="changeme"
 
 # ── Logging ──────────────────────────────────────────────────
-log()  { printf '\033[0;36m[%s]\033[0m %s\n' "$(date +%H:%M:%S)" "$*"; }
-ok()   { printf '\033[0;32m  ✔ %s\033[0m\n' "$*"; }
-warn() { printf '\033[1;33m  ⚠ %s\033[0m\n' "$*"; }
+log()  { printf '\033[0;36m[%s]\033[0m %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
+ok()   { printf '\033[0;32m  ✔ %s\033[0m\n' "$*" >&2; }
+warn() { printf '\033[1;33m  ⚠ %s\033[0m\n' "$*" >&2; }
 fail() { printf '\033[0;31m  ✘ %s\033[0m\n' "$*" >&2; exit 1; }
 
 usage() {
