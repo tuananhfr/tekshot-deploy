@@ -86,13 +86,49 @@ readonly ENABLE_AI_FACE=$([[ "$TYPE" == "all" ]] && echo "true" || echo "false")
 
 DOCKER_IMAGE=""
 FRPC_LOCAL_IP="127.0.0.1"
+INFERENCE_BACKEND="hailo"
+
+# ── GPU Auto-Detection (Windows) ─────────────────────────────
+detect_gpu_image() {
+  if ! command -v nvidia-smi &>/dev/null; then
+    warn "nvidia-smi not found. Falling back to ONNX (CPU-only)."
+    echo "ghcr.io/tuananhfr/tekshot-ai-onnx:stable"
+    INFERENCE_BACKEND="onnx"
+    return
+  fi
+
+  local cc
+  cc=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits 2>/dev/null | head -1)
+
+  if [[ -z "$cc" ]]; then
+    warn "Could not detect GPU Compute Capability. Falling back to ONNX."
+    echo "ghcr.io/tuananhfr/tekshot-ai-onnx:stable"
+    INFERENCE_BACKEND="onnx"
+    return
+  fi
+
+  local major="${cc%%.*}"
+  ok "Detected GPU Compute Capability: ${cc} (major=${major})"
+
+  if (( major >= 8 )); then
+    ok "GPU supports TensorRT 10 (Ampere/Ada/Blackwell)"
+    echo "ghcr.io/tuananhfr/tekshot-ai-tensorrt10:stable"
+    INFERENCE_BACKEND="tensorrt10"
+  else
+    ok "GPU supports TensorRT 8 (Pascal/Volta/Turing)"
+    echo "ghcr.io/tuananhfr/tekshot-ai-tensorrt:stable"
+    INFERENCE_BACKEND="tensorrt"
+  fi
+}
 
 if [[ "$TARGET_OS" == "pi" ]]; then
   DOCKER_IMAGE="ghcr.io/tuananhfr/tekshot-ai:stable"
   FRPC_LOCAL_IP="127.0.0.1"
+  INFERENCE_BACKEND="hailo"
 elif [[ "$TARGET_OS" == "win" ]]; then
-  DOCKER_IMAGE="ghcr.io/tuananhfr/tekshot-ai-tensorrt:stable"
+  DOCKER_IMAGE=$(detect_gpu_image)
   FRPC_LOCAL_IP="host.docker.internal"
+  log "Auto-selected image: $DOCKER_IMAGE (backend=$INFERENCE_BACKEND)"
 fi
 
 cat <<BANNER
