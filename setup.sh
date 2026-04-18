@@ -54,7 +54,9 @@ USAGE
 write_file() {
   local path="$1"
   mkdir -p "$(dirname "$path")"
-  cat > "$path"
+  # Dùng tr -d '\r' để dọn dẹp sạch sẽ tàn dư CRLF của Windows
+  # Điều này giúp nội dung file xuất ra luôn chuẩn Linux (LF)
+  tr -d '\r' > "$path"
   ok "$(basename "$path")"
 }
 
