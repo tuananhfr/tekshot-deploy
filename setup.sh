@@ -418,6 +418,8 @@ services:
     container_name: mediamtx
     restart: unless-stopped
     network_mode: host
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
     volumes:
       - ./mediamtx.yml:/mediamtx.yml:ro
       - ./tekshot-core/data/recordings:/recordings
