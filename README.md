@@ -14,10 +14,15 @@ Script này sẽ tự động tạo một thư mục làm việc mới tên là 
 
 Cú pháp:
 ```bash
-./setup.sh [TARGET_OS] <DEVICE_ID> <TYPE>
+./setup.sh [--v2] [TARGET_OS] <DEVICE_ID> <TYPE>
 ```
 
 ### Tham số
+0. **`--v2` (Tùy chọn)**: Sinh cấu hình cho backend **v2** thay vì v1. Đặt ở đâu trong dòng lệnh cũng được.
+   - *Bỏ trống* = v1, dùng ảnh `tekshot-ai-*:stable` — hành vi cũ, không đổi một byte nào.
+   - `--v2` = dùng ảnh `tekshot-ai-v2-*:beta`. Không Watchtower nào theo dõi tag `:beta`,
+     và stack sinh ra còn đặt `WATCHTOWER_POLL_INTERVAL=0`, nên máy cài v2 **không bao giờ
+     tự nhảy phiên bản** — muốn cập nhật thì gọi HTTP API của Watchtower.
 1. **`TARGET_OS` (Tùy chọn)**: 
    - `pi` (Dành cho Raspberry Pi - ARM64 Native)
    - `win` (Dành cho Windows máy chủ - AMD64 TensorRT qua Docker Desktop)
@@ -43,6 +48,9 @@ bash setup.sh pi-store1 timelapse
 
 # Khai báo rõ ràng hệ điều hành là 'pi' (Cách mới)
 bash setup.sh pi pi-store1 all
+
+# Backend v2 (ảnh tekshot-ai-v2:beta)
+bash setup.sh --v2 pi pi4 all
 ```
 
 ### 2. Triển khai lên máy tính Windows có GPU
