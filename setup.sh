@@ -23,15 +23,14 @@ set -euo pipefail
 
 # ── Constants ────────────────────────────────────────────────
 readonly VERSION="2.3.0"
-readonly DOMAIN_BASE="tekshot-ai.erpcons.vn"
 
 # Note: Git Bash for Windows converts /c/ to C:\ automatically.
 readonly BASE_DIR="${PWD}/tekshot-run"
-readonly FRP_SERVER="36.50.54.183"
-readonly FRP_PORT=7000
-readonly FRP_TOKEN="123456"
 readonly UPDATE_TOKEN="tekshot-ai-2026"
 readonly WATCHTOWER_TOKEN="changeme"
+
+# DOMAIN_BASE, FRP_SERVER, FRP_PORT và FRP_TOKEN được đặt SAU khi biết edition,
+# vì hai edition trỏ vào hai FRP server khác nhau — xem khối "FRP endpoint".
 
 # ── Logging ──────────────────────────────────────────────────
 log()  { printf '\033[0;36m[%s]\033[0m %s\n' "$(date +%H:%M:%S)" "$*" >&2; }
@@ -106,6 +105,25 @@ TYPE="${TYPE,,}"
 
 # Đảm bảo DOMAIN bắt buộc phải theo chuẩn pi* mà sếp đã mua
 [[ "$PI_ID" == pi* ]] || warn "Tên miền không bắt đầu bằng 'pi' (Ví dụ: pi4). Bạn đang dùng: $PI_ID"
+
+# ── FRP endpoint ─────────────────────────────────────────────
+# Hai edition trỏ vào hai server khác nhau: v1 vẫn dùng VPS cũ theo IP, v2 dùng
+# VPS mới theo hostname. Mọi giá trị đều ghi đè được bằng biến môi trường, nên
+# dời server không còn phải sửa script:
+#
+#   FRP_SERVER=1.2.3.4 FRP_TOKEN=xxx bash setup.sh --v2 pi pi4 all
+#
+# FRP_TOKEN mặc định là "123456" và nó nằm trong một repo public — coi như công
+# khai. Đổi nó cùng lúc với đổi server là hợp lý nhất.
+if [[ "$EDITION" == "v2" ]]; then
+  readonly DOMAIN_BASE="${DOMAIN_BASE:-camera.tekshot.vn}"
+  readonly FRP_SERVER="${FRP_SERVER:-camera.tekshot.vn}"
+else
+  readonly DOMAIN_BASE="${DOMAIN_BASE:-tekshot-ai.erpcons.vn}"
+  readonly FRP_SERVER="${FRP_SERVER:-36.50.54.183}"
+fi
+readonly FRP_PORT="${FRP_PORT:-7000}"
+readonly FRP_TOKEN="${FRP_TOKEN:-123456}"
 
 readonly DOMAIN="${PI_ID}.${DOMAIN_BASE}"
 readonly APP_TYPE=$([[ "$TYPE" == "all" ]] && echo "ALL" || echo "TIMELAPSE")
@@ -340,6 +358,34 @@ EOF
 # ═════════════════════════════════════════════════════════════
 log "Phase 4: FRP tunnel"
 
+if [[ "$EDITION" == "v2" ]]; then
+# VPS mới định tuyến bằng `subdomain`, không phải `customDomains`: client chỉ
+# khai phần đầu, frps ghép nó với subDomainHost cấu hình phía server. Nghĩa là
+# thêm thiết bị không còn phải đụng gì tới DNS.
+write_file "${BASE_DIR}/frpc/frpc.toml" <<EOF
+serverAddr = "${FRP_SERVER}"
+serverPort = ${FRP_PORT}
+
+auth.method = "token"
+auth.token = "${FRP_TOKEN}"
+
+# Backend
+[[proxies]]
+name = "camera-backend-${PI_ID}"
+type = "http"
+localIP = "${FRPC_LOCAL_IP}"
+localPort = 5005
+subdomain = "${PI_ID}"
+
+# go2rtc
+[[proxies]]
+name = "camera-go2rtc-${PI_ID}"
+type = "http"
+localIP = "${FRPC_LOCAL_IP}"
+localPort = 1984
+subdomain = "go2rtc-${PI_ID}"
+EOF
+else
 write_file "${BASE_DIR}/frpc/frpc.toml" <<EOF
 serverAddr = "${FRP_SERVER}"
 serverPort = ${FRP_PORT}
@@ -360,6 +406,7 @@ localIP       = "${FRPC_LOCAL_IP}"
 localPort     = 1984
 customDomains = ["go2rtc.${DOMAIN}"]
 EOF
+fi
 
 # ═════════════════════════════════════════════════════════════
 # Phase 5 — Docker Compose Generation
