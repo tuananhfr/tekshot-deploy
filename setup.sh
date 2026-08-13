@@ -133,14 +133,19 @@ DOCKER_IMAGE=""
 FRPC_LOCAL_IP="127.0.0.1"
 INFERENCE_BACKEND="hailo"
 
-# Tên ảnh theo edition. v1 dùng :stable — tag mà Watchtower trên thiết bị đang
-# theo dõi. v2 dùng :beta, tag không ai theo dõi, nên một máy cài v2 sẽ không
-# bao giờ tự nhảy phiên bản.
+# Cả hai edition đều dùng :stable. v2 dùng :beta cho tới 2026-08-13, khi v1 bị
+# gỡ khỏi repo tekshot-ai và CI chuyển sang push :stable — kể từ đó `beta` là
+# tag không ai build nữa, nên máy nào còn ghim nó sẽ không bao giờ nhận bản vá.
+# Máy cài trước ngày đó phải sửa tay dòng `image:` trong
+# tekshot-run/docker-compose.yml rồi `docker compose pull && up -d`.
+#
+# Chặn tự nhảy phiên bản giờ nằm ở WATCHTOWER_POLL_INTERVAL=0 bên dưới, không
+# còn ở tag nữa.
 image_ref() {
   local variant="$1"   # pi | onnx | tensorrt | tensorrt10
   local name tag
   if [[ "$EDITION" == "v2" ]]; then
-    name="tekshot-ai-v2"; tag="beta"
+    name="tekshot-ai-v2"; tag="stable"
   else
     name="tekshot-ai";    tag="stable"
   fi
@@ -300,6 +305,24 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
+    }
+
+    # WebSocket của backend phải có location riêng. Đi chung với `location /`
+    # thì nginx cắt header Upgrade, FastAPI nhận một GET thường, route
+    # websocket không khớp (Starlette khớp theo scope type) và trả 404 trong
+    # khi REST cùng host vẫn 200 — /ws/events, /ws/live/* và /ws/stream cùng
+    # chết theo, không có lỗi nào chỉ ra nguyên nhân.
+    location /api/v1/ws/ {
+        proxy_pass http://127.0.0.1:5005/api/v1/ws/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        # /ws/events im lặng khi không có sự kiện; trần 60s mặc định là cứ mỗi
+        # phút lại rớt một lần rồi client nối lại vô ích.
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
     }
 
     location / {
@@ -583,8 +606,18 @@ services:
       - ./tekshot-core/logs:/app/logs
 ${CONFIG_MOUNT}
       - ./tekshot-core/data:/app/data
+      # Mount TỪNG FILE, tuyệt đối không mount cả /usr/lib/aarch64-linux-gnu.
+      # Bản trước có mount cả thư mục đó, và nó đè toàn bộ thư viện dùng chung
+      # của container bằng thư viện của host. ffmpeg trong ảnh build cho
+      # libavfilter 7.1.5 (Debian) gặp bản 7.1.3 dựng lại của Raspberry Pi và
+      # chết bằng "undefined symbol: av_buffersrc_get_status" — thoát ra đúng
+      # exit 127, nên nhìn y hệt như chưa cài ffmpeg. Mọi endpoint phát lại
+      # recordings hỏng theo, còn /system/health vẫn xanh.
+      # pyhailort chỉ cần libc/libm/libpthread/librt/libstdc++/libgcc_s, toàn
+      # thứ container đã có sẵn; thứ duy nhất thật sự thuộc về host là
+      # libhailort, đã mount riêng ngay dưới. Gỡ mount thư mục và xác nhận trên
+      # pi2 2026-08-13: cả ba HEF vẫn nạp, pipeline running, ffmpeg sống lại.
       - /usr/lib/python3/dist-packages/hailo_platform:/usr/lib/python3/dist-packages/hailo_platform:ro
-      - /usr/lib/aarch64-linux-gnu:/usr/lib/aarch64-linux-gnu:ro
 ${HAILO_SO_MOUNT}
       - /usr/lib/libhailort.so.4.23.0:/usr/lib/libhailort.so.4.23.0:ro
     depends_on:
